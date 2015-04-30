@@ -1,5 +1,14 @@
 module ConstantQ
 
-# package code goes here
+export
+    GeometricFrequency,
+    q,
+    nfreqs,
+    freqs,
+    kernelmat,
+    fastcqt,
+    cqt
+
+include("cqt.jl")
 
 end # module

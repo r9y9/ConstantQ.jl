@@ -2,7 +2,6 @@ using DSP
 
 abstract Frequency
 
-# Interface
 nfreqs(f::Frequency) = error("Not implemented")
 freqs(f::Frequency) = error("Not implemented")
 
@@ -20,19 +19,23 @@ immutable GeometricFrequency <: Frequency
     end
 end
 
-GeometricFrequency(fmin, fmax; ratio=24.0) = GeometricFrequency(fmin, fmax, ratio)
+function GeometricFrequency(fmin, fmax; ratio=24.0)
+    GeometricFrequency(fmin, fmax, ratio)
+end
 
 # Q-value
-q(fratio, qrate=1.0) = 1. / (2 ^ (1/fratio) - 1) * qrate
+q(fratio, qrate=1.0) = 1.0 / (2 ^ (1.0/fratio) - 1) * qrate
 q(f::GeometricFrequency, qrate=1.0) = q(f.ratio, qrate)
 
 function nfreqs(f::GeometricFrequency)
     round(Int, f.ratio  * (log2(f.max / f.min)))
 end
 
-freqs(f::GeometricFrequency) = f.min * 2.0 .^ ((0:nfreqs(f)-1) / f.ratio)
+function freqs(f::GeometricFrequency)
+    f.min * 2 .^ ((0:nfreqs(f)-1) / f.ratio)
+end
 
-# Compute (sparse) kernel matrix K in frequency-domain
+# Compute sparse kernel matrix in frequency-domain
 function kernelmat(T::Type, fdef::GeometricFrequency, fs=1,
                    win::Function=hamming,
                    splow::Float64=0.005)
@@ -41,37 +44,41 @@ function kernelmat(T::Type, fdef::GeometricFrequency, fs=1,
     winsizes = round(Int, fs ./ f * Q)
     fftlen = nextpow2(winsizes[1])
 
-    # Create kernel matrix
     K = zeros(Complex{T}, fftlen, length(winsizes))
-    tmp = Array(Complex{T}, fftlen)
+    atom = Array(Complex{T}, fftlen)
 
     for k = 1:length(winsizes)
-        fill!(tmp, zero(T))
+        fill!(atom, zero(T))
         Nₖ = winsizes[k]
         kernel = win(Nₖ) .* exp(-im*2π*Q/Nₖ .* (1:Nₖ)) / Nₖ
         s = (fftlen - Nₖ) >> 1 + 1
-        copy!(tmp, s, kernel, 1, Nₖ)
-        K[:, k] = fft(tmp)
+        copy!(atom, s, kernel, 1, Nₖ)
+        K[:, k] = fft(atom)
     end
 
-    # approximate to sparse matrix
     K[abs(K) .< splow] = 0.0
     Kˢ = sparse(K)
-
-    # Complex conjugate
     conj!(Kˢ)
-
-    # Normalization
     Kˢ ./= fftlen
 
     Kˢ
 end
 
-function fastcqt{T}(x::Vector{T}, fdef::GeometricFrequency, fs=1;
-                    hopsize=round(Int, fs*0.005),
-                    win::Function=hamming,
-                    splow::Float64=0.0054,
-                    K = kernelmat(T, fdef, fs, win, splow)
+function sym!(symfftout, fftout)
+    copy!(symfftout, 1, fftout, 1, length(fftout))
+    @inbounds for i = 1:length(fftout)-1
+        symfftout[end-i+1] = conj(fftout[i+1])
+    end
+end
+
+# J. C. Brown and M. S. Puckette, BAn efficient algorithm for the calculation
+# of a constant Q transform, J. Acoust. Soc. Amer., vol. 92, no. 5,
+# pp. 2698–2701, 1992.
+function cqt{T}(x::Vector{T}, fdef::GeometricFrequency, fs=1;
+                hopsize=round(Int, fs*0.005),
+                win::Function=hamming,
+                splow::Float64=0.0054,
+                K::SparseMatrixCSC = kernelmat(T, fdef, fs, win, splow)
     )
     Q = q(fdef)
     f = freqs(fdef)
@@ -80,7 +87,7 @@ function fastcqt{T}(x::Vector{T}, fdef::GeometricFrequency, fs=1;
     nframes = round(Int, length(x) / hopsize) - 1
 
     fftlen = nextpow2(winsizes[1])
-    @assert size(K) == (fftlen, length(winsizes))
+    size(K) == (fftlen, length(winsizes)) || error("inconsistent kernel size")
 
     # Create padded signal
     xpadd = Array(T, length(x) + fftlen)
@@ -95,6 +102,9 @@ function fastcqt{T}(x::Vector{T}, fdef::GeometricFrequency, fs=1;
     # Constant-Q spectrogram
     X = Array(Complex{T}, length(f), nframes)
 
+    # tmp used in loop
+    freqbins = Array(Complex{T}, length(f))
+
     for n = 1:nframes
         s = hopsize * n + 1
         # copy to input buffer
@@ -102,20 +112,21 @@ function fastcqt{T}(x::Vector{T}, fdef::GeometricFrequency, fs=1;
         # FFT
         FFTW.execute(fplan.plan, fftin, fftout)
         # get full fft bins (rest half are complex conjugate)
-        copy!(symfftout, 1, fftout, 1, length(fftout))
-        @inbounds for i=1:length(fftout)-1
-            symfftout[end-i+1] = conj(fftout[i+1])
-        end
-        # multily in frequency-domain
-        X[:,n] = symfftout * K
+        sym!(symfftout, fftout)
+        # mutiply in frequency-domain
+        At_mul_B!(freqbins, K, symfftout)
+        copy!(X, length(f)*(n-1) + 1, freqbins, 1, length(f))
     end
 
     X
 end
 
-function cqt{T}(x::Vector{T}, f::GeometricFrequency, fs=1;
-                hopsize=round(Int, fs*0.005),
-                win::Function=hamming)
+# J. Brown. Calculation of a constant Q spectral transform.
+# Journal of the Acoustical Society of America,, 89(1):
+# 425–434, 1991.
+function cqt_naive{T}(x::Vector{T}, f::GeometricFrequency, fs=1;
+                      hopsize::Int=round(Int, fs*0.005),
+                      win::Function=hamming)
     Q = q(f)
     f = freqs(f)
 
@@ -126,7 +137,7 @@ function cqt{T}(x::Vector{T}, f::GeometricFrequency, fs=1;
 
     for k = 1:length(winsizes)
         Nₖ = winsizes[k]
-        Nh = round(Int, Nₖ / 2)
+        Nh = Nₖ >> 1
         kernel = win(Nₖ) .* exp(-im*2π*Q/Nₖ .* (1:Nₖ)) / Nₖ
         s = zeros(Nₖ)
 

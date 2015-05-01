@@ -2,11 +2,10 @@ module ConstantQ
 
 export
     GeometricFrequency,
-    q,
     nfreqs,
     freqs,
+    q,
     kernelmat,
-    fastcqt,
     cqt
 
 include("cqt.jl")

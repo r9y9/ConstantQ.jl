@@ -50,6 +50,6 @@ let
     fdef = GeometricFrequency(174.5, fs/2)
 
     K = kernelmat(Float64, fdef, fs, hamming, 0.005)
-    X = fastcqt(x, fdef, fs, hopsize=80, K=K)
+    X = cqt(x, fdef, fs, hopsize=80, K=K)
     @test isa(X, Matrix{Complex{Float64}})
 end

@@ -28,7 +28,7 @@ q(fratio, qrate=1.0) = 1.0 / (2 ^ (1.0/fratio) - 1) * qrate
 q(f::GeometricFrequency, qrate=1.0) = q(f.ratio, qrate)
 
 function nfreqs(f::GeometricFrequency)
-    round(Int, f.ratio  * (log2(f.max / f.min)))
+    convert(Int, round(f.ratio  * (log2(f.max / f.min))))
 end
 
 function freqs(f::GeometricFrequency)
@@ -41,7 +41,7 @@ function kernelmat(T::Type, fdef::GeometricFrequency, fs=1,
                    splow::Float64=0.005)
     Q = q(fdef)
     f = freqs(fdef)
-    winsizes = round(Int, fs ./ f * Q)
+    winsizes = int(fs ./ f * Q)
     fftlen = nextpow2(winsizes[1])
 
     K = zeros(Complex{T}, fftlen, length(winsizes))
@@ -49,10 +49,10 @@ function kernelmat(T::Type, fdef::GeometricFrequency, fs=1,
 
     for k = 1:length(winsizes)
         fill!(atom, zero(T))
-        Nₖ = winsizes[k]
-        kernel = win(Nₖ) .* exp(-im*2π*Q/Nₖ .* (1:Nₖ)) / Nₖ
-        s = (fftlen - Nₖ) >> 1 + 1
-        copy!(atom, s, kernel, 1, Nₖ)
+        Nk = winsizes[k]
+        kernel = win(Nk) .* exp(-im*2π*Q/Nk .* (1:Nk)) / Nk
+        s = (fftlen - Nk) >> 1 + 1
+        copy!(atom, s, kernel, 1, Nk)
         K[:, k] = fft(atom)
     end
 
@@ -75,7 +75,7 @@ end
 # of a constant Q transform, J. Acoust. Soc. Amer., vol. 92, no. 5,
 # pp. 2698–2701, 1992.
 function cqt{T}(x::Vector{T}, fdef::GeometricFrequency, fs=1;
-                hopsize=round(Int, fs*0.005),
+                hopsize::Int=convert(Int, round(fs*0.005)),
                 win::Function=hamming,
                 splow::Float64=0.0054,
                 K::SparseMatrixCSC = kernelmat(T, fdef, fs, win, splow)
@@ -83,8 +83,8 @@ function cqt{T}(x::Vector{T}, fdef::GeometricFrequency, fs=1;
     Q = q(fdef)
     f = freqs(fdef)
 
-    winsizes = round(Int, fs ./ f * Q)
-    nframes = round(Int, length(x) / hopsize) - 1
+    winsizes = int(fs ./ f * Q)
+    nframes = div(length(x), hopsize) - 1
 
     fftlen = nextpow2(winsizes[1])
     size(K) == (fftlen, length(winsizes)) || error("inconsistent kernel size")
@@ -125,21 +125,21 @@ end
 # Journal of the Acoustical Society of America,, 89(1):
 # 425–434, 1991.
 function cqt_naive{T}(x::Vector{T}, f::GeometricFrequency, fs=1;
-                      hopsize::Int=round(Int, fs*0.005),
+                      hopsize::Int=convert(Int, round(fs*0.005)),
                       win::Function=hamming)
     Q = q(f)
     f = freqs(f)
 
-    winsizes = round(Int, fs ./ f * Q)
-    nframes = round(Int, length(x) / hopsize) - 1
+    winsizes = int(fs ./ f * Q)
+    nframes = div(length(x), hopsize) - 1
 
     X = Array(Complex{T}, length(f), nframes)
 
     for k = 1:length(winsizes)
-        Nₖ = winsizes[k]
-        Nh = Nₖ >> 1
-        kernel = win(Nₖ) .* exp(-im*2π*Q/Nₖ .* (1:Nₖ)) / Nₖ
-        s = zeros(Nₖ)
+        Nk = winsizes[k]
+        Nh = Nk >> 1
+        kernel = win(Nk) .* exp(-im*2π*Q/Nk .* (1:Nk)) / Nk
+        s = zeros(Nk)
 
         for n = 1:nframes
             center = hopsize * (n - 1) + 1

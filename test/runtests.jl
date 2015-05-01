@@ -1,6 +1,7 @@
 using ConstantQ
-using DSP
 using Base.Test
+
+import DSP: hamming
 
 let
     GeometricFrequency(60, 61)
@@ -20,9 +21,9 @@ let
     @test nfreqs(GeometricFrequency(60, 240, 30)) == 60
 end
 
-# constant diff
+# constant diff in log-frequency domain
 let
-    f = ConstantQ.freqs(GeometricFrequency(60, 120))
+    f = freqs(GeometricFrequency(60, 120))
     d = diff(log(f))
     for e in d
         @test_approx_eq d[1] e
@@ -51,5 +52,15 @@ let
 
     K = kernelmat(Float64, fdef, fs, hamming, 0.005)
     X = cqt(x, fdef, fs, hopsize=80, K=K)
+    @test isa(X, Matrix{Complex{Float64}})
+end
+
+# cqt_naive
+let
+    srand(98765)
+    x = rand(Float64, 60700)
+    fs = 16000
+    fdef = GeometricFrequency(174.5, fs/2)
+    X = ConstantQ.cqt_naive(x, fdef, fs, hopsize=80)
     @test isa(X, Matrix{Complex{Float64}})
 end

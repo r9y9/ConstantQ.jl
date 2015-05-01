@@ -51,7 +51,7 @@ let
     fdef = GeometricFrequency(174.5, fs/2)
 
     K = kernelmat(Float64, fdef, fs, hamming, 0.005)
-    X = cqt(x, fdef, fs, hopsize=80, K=K)
+    X = cqt(x, fs, fdef, hopsize=80, K=K)
     @test isa(X, Matrix{Complex{Float64}})
 end
 
@@ -61,6 +61,6 @@ let
     x = rand(Float64, 60700)
     fs = 16000
     fdef = GeometricFrequency(174.5, fs/2)
-    X = ConstantQ.cqt_naive(x, fdef, fs, hopsize=80)
+    X = ConstantQ.cqt_naive(x, fs, fdef, hopsize=80)
     @test isa(X, Matrix{Complex{Float64}})
 end

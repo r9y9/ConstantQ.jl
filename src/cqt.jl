@@ -74,11 +74,12 @@ end
 # J. C. Brown and M. S. Puckette, BAn efficient algorithm for the calculation
 # of a constant Q transform, J. Acoust. Soc. Amer., vol. 92, no. 5,
 # pp. 2698–2701, 1992.
-function cqt{T}(x::Vector{T}, fdef::GeometricFrequency, fs=1;
+function cqt{T}(x::Vector{T},
+                fs=16000,
+                fdef::GeometricFrequency=GeometricFrequency(55, fs/2);
                 hopsize::Int=convert(Int, round(fs*0.005)),
                 win::Function=hamming,
-                splow::Float64=0.0054,
-                K::SparseMatrixCSC = kernelmat(T, fdef, fs, win, splow)
+                K::SparseMatrixCSC = kernelmat(T, fdef, fs, win, 0.001)
     )
     Q = q(fdef)
     f = freqs(fdef)
@@ -124,11 +125,13 @@ end
 # J. Brown. Calculation of a constant Q spectral transform.
 # Journal of the Acoustical Society of America,, 89(1):
 # 425–434, 1991.
-function cqt_naive{T}(x::Vector{T}, f::GeometricFrequency, fs=1;
+function cqt_naive{T}(x::Vector{T},
+                      fs=16000,
+                      fdef::GeometricFrequency=GeometricFrequency(55, fs/2);
                       hopsize::Int=convert(Int, round(fs*0.005)),
                       win::Function=hamming)
-    Q = q(f)
-    f = freqs(f)
+    Q = q(fdef)
+    f = freqs(fdef)
 
     winsizes = int(fs ./ f * Q)
     nframes = div(length(x), hopsize) - 1

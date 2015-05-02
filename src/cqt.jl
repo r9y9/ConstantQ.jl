@@ -101,12 +101,13 @@ function _kernelmat(T::Type,
     atom = Array(Complex{T}, fftlen)
 
     for k = 1:length(winsizes)
-        fill!(atom, zero(T))
+        fill!(atom, zero(Complex{T}))
         Nk = winsizes[k]
         kernel = win(Nk) .* exp(-im*2π*Q/Nk .* (1:Nk)) / Nk
         s = (fftlen - Nk) >> 1 + 1
         copy!(atom, s, kernel, 1, Nk)
-        K[:, k] = fft(atom)
+        fft!(atom)
+        copy!(K, fftlen*(k-1) + 1, atom, 1, fftlen)
     end
 
     K[abs(K) .< threshold] = 0.0

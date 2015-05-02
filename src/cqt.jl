@@ -124,8 +124,8 @@ function sym!(symfftout, fftout)
     end
 end
 
-# J. C. Brown and M. S. Puckette, BAn efficient algorithm for the calculation
-# of a constant Q transform, J. Acoust. Soc. Amer., vol. 92, no. 5,
+# J. C. Brown and M. S. Puckette, "An efficient algorithm for the calculation
+# of a constant Q transform," J. Acoust. Soc. Amer., vol. 92, no. 5,
 # pp. 2698–2701, 1992.
 function cqt{T}(x::Vector{T},
                 fs::Real,

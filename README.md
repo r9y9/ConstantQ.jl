@@ -31,5 +31,5 @@ X, timeaxis, freqaxis = cqt(x, fs, K, hopsize=hopsize)
 
 ## References
 
-- J. C. Brown and M. S. Puckette, B. An efficient algorithm for the calculation of a constant Q transform, J. Acoust. Soc. Amer., vol. 92, no. 5, pp. 2698–2701, 1992.
-- J. C. Brown. Calculation of a constant Q spectral transform. Journal of the Acoustical Society of America,, 89(1): 425–434, 1991.
+- J. C. Brown and M. S. Puckette, "An efficient algorithm for the calculation of a constant Q transform," J. Acoust. Soc. Amer., vol. 92, no. 5, pp. 2698–2701, 1992.
+- J. C. Brown. "Calculation of a constant Q spectral transform," Journal of the Acoustical Society of America,, 89(1): 425–434, 1991.

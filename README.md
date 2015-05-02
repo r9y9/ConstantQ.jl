@@ -26,7 +26,7 @@ K = kernelmat(Float64, fs, freq)
 
 # Compute constant-q spectrogram
 hopsize = convert(Int, fs * 0.005) # 5ms hopsize
-X, timeaxis, freqaxis = cqt(x, fs, K, hopsize)
+X, timeaxis, freqaxis = cqt(x, fs, K, hopsize=hopsize)
 ```
 
 ## References

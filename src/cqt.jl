@@ -135,9 +135,9 @@ function cqt{T}(x::Vector{T},
                 K::AbstractMatrix = _kernelmat(T, fs, freq, win, 0.005)
                 )
     Q = q(freq)
-    f = freqs(freq)
+    freqaxis = freqs(freq)
 
-    winsizes = int(fs ./ f * Q)
+    winsizes = int(fs ./ freqaxis * Q)
     nframes = div(length(x), hopsize)
 
     fftlen = nextpow2(winsizes[1])
@@ -154,10 +154,10 @@ function cqt{T}(x::Vector{T},
     symfftout = Array(Complex{T}, fftlen)
 
     # Constant-Q spectrogram
-    X = Array(Complex{T}, length(f), nframes)
+    X = Array(Complex{T}, length(freqaxis), nframes)
 
     # tmp used in loop
-    freqbins = Array(Complex{T}, length(f))
+    freqbins = Array(Complex{T}, length(freqaxis))
 
     for n = 1:nframes
         s = hopsize * (n - 1) + 1
@@ -169,10 +169,11 @@ function cqt{T}(x::Vector{T},
         sym!(symfftout, fftout)
         # mutiply in frequency-domain
         At_mul_B!(freqbins, K, symfftout)
-        copy!(X, length(f)*(n-1) + 1, freqbins, 1, length(f))
+        copy!(X, length(freqaxis)*(n-1) + 1, freqbins, 1, length(freqaxis))
     end
 
-    X
+    timeaxis = [0:hopsize:nframes;]/fs
+    X, timeaxis, freqaxis
 end
 
 # CQT with a user-specified kernel matrix

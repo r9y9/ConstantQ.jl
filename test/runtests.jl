@@ -115,22 +115,21 @@ let
     freq = GeometricFrequency(174.5, fs/2)
 
     K = _kernelmat(Float64, fs, freq, hamming, 0.005)
-    X = cqt(x, fs, freq, hopsize, hamming, K)
-    @test isa(X, Matrix{Complex{Float64}})
-
-    # user-friendly interface
-    K = kernelmat(Float64, fs, freq, hamming, 0.005)
-    @test isa(K, SpectralKernelMatrix)
-    X = cqt(x, fs, K)
+    X, timeaxis, freqaxis = cqt(x, fs, freq, hopsize, hamming, K)
     @test isa(X, Matrix{Complex{Float64}})
 end
 
+# user-friendly interface
 let
     srand(98765)
     x = rand(Float64, 60700)
     fs = 16000
 
-    K = kernelmat(Float64, fs)
-    X = cqt(x, fs, K)
-    @test isa(X, Matrix{Complex{Float64}})
+    K = kernelmat(Float64, fs, GeometricFrequency(min=60, max=5000))
+    X, timeaxis, freqaxis = cqt(x, fs, K)
+
+    @test first(timeaxis) == 0.0
+    @test last(timeaxis) <= length(x)/fs
+    @test first(freqaxis) == 60
+    @test last(freqaxis) <= 5000
 end

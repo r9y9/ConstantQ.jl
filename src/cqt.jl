@@ -1,46 +1,99 @@
 using DSP
 
+import Base: getindex, size, length, full, issparse
+
 abstract Frequency
 
 nfreqs(f::Frequency) = error("Not implemented")
 freqs(f::Frequency) = error("Not implemented")
 
 # Geometrically spaced frequency
-# fₖ = min * 2^(1/ratio)ᵏ
+# fₖ = min * 2^(1/bins)ᵏ
 immutable GeometricFrequency <: Frequency
     min::Real
     max::Real
-    ratio::Real # the number of bins per octave
+    bins::Real # the number of bins per octave
 
-    function GeometricFrequency(fmin, fmax, fratio)
-        fmin < fmax || throw(ArgumentError("fmax must be larger than fmin"))
-        fratio > 0 || throw(ArgumentError("fratio must be positive"))
-        new(fmin, fmax, fratio)
+    function GeometricFrequency(min, max, bins=24)
+        min <= max || throw(ArgumentError("max must be larger than min"))
+        bins > 0 || throw(ArgumentError("bins must be positive"))
+        new(min, max, bins)
     end
 end
 
-function GeometricFrequency(fmin, fmax; ratio=24.0)
-    GeometricFrequency(fmin, fmax, ratio)
+function GeometricFrequency(; min::Real=55, max::Real=5000, bins::Real=24)
+    GeometricFrequency(min, max, bins)
 end
 
-# Q-value
-q(fratio, qrate=1.0) = 1.0 / (2 ^ (1.0/fratio) - 1) * qrate
-q(f::GeometricFrequency, qrate=1.0) = q(f.ratio, qrate)
+nbins_per_octave(freq::GeometricFrequency) = freq.bins
+
+# Q-factor
+q(bins, qrate=1.0) = 1.0 / (2 ^ (1.0/bins) - 1) * qrate
+q(f::GeometricFrequency, qrate=1.0) = q(f.bins, qrate)
 
 function nfreqs(f::GeometricFrequency)
-    convert(Int, round(f.ratio  * (log2(f.max / f.min))))
+    convert(Int, round(nbins_per_octave(f)  * (log2(f.max / f.min))))
 end
 
 function freqs(f::GeometricFrequency)
-    f.min * 2 .^ ((0:nfreqs(f)-1) / f.ratio)
+    f.min * 2 .^ ((0:nfreqs(f)-1) / nbins_per_octave(f))
+end
+
+# Kernel property
+immutable KernelProperty
+    fs::Real
+    freq::GeometricFrequency
+    win::Function
+
+    function KernelProperty(fs, freq, win)
+        applicable(win, 512) || error("Invalid window function")
+        new(fs, freq, win)
+    end
+end
+
+# Spectral kernel (freqency-domain kernel)
+immutable SpectralKernelMatrix{T<:Complex} <: AbstractMatrix{T}
+    data::AbstractMatrix{T}
+    property::KernelProperty
+end
+
+property(kernel::SpectralKernelMatrix) = kernel.property
+rawdata(kernel::SpectralKernelMatrix) = kernel.data
+
+size(k::SpectralKernelMatrix) = size(k.data)
+length(k::SpectralKernelMatrix) = length(k.data)
+
+getindex(k::SpectralKernelMatrix, i::Real) = getindex(k.data, i)
+getindex(k::SpectralKernelMatrix, i::Real...) = getindex(k.data, i...)
+getindex(k::SpectralKernelMatrix, i::Real, j::Real) = getindex(k.data, i, j)
+getindex(k::SpectralKernelMatrix, i::Range, j::Real) = getindex(k.data, i, j)
+getindex(k::SpectralKernelMatrix, i::Real, j::Range) = getindex(k.data, i, j)
+
+issparse(k::SpectralKernelMatrix) = issparse(k.data)
+full(k::SpectralKernelMatrix) = full(k.data)
+
+function kernelmat(T::Type,
+                   fs::Real,
+                   freq::GeometricFrequency=GeometricFrequency(55, fs/2),
+                   win::Function=hamming,
+                   threshold::Float64=0.005)
+    prop = KernelProperty(fs, freq, win)
+    data = _kernelmat(T, prop, threshold)
+    SpectralKernelMatrix(data, prop)
+end
+
+function _kernelmat(T::Type, prop::KernelProperty, threshold::Float64=0.005)
+    _kernelmat(T, prop.fs, prop.freq, prop.win, threshold)
 end
 
 # Compute sparse kernel matrix in frequency-domain
-function kernelmat(T::Type, fdef::GeometricFrequency, fs=1,
-                   win::Function=hamming,
-                   splow::Float64=0.005)
-    Q = q(fdef)
-    f = freqs(fdef)
+function _kernelmat(T::Type,
+                    fs::Real,
+                    freq::GeometricFrequency,
+                    win::Function,
+                    threshold::Float64)
+    Q = q(freq)
+    f = freqs(freq)
     winsizes = int(fs ./ f * Q)
     fftlen = nextpow2(winsizes[1])
 
@@ -56,7 +109,7 @@ function kernelmat(T::Type, fdef::GeometricFrequency, fs=1,
         K[:, k] = fft(atom)
     end
 
-    K[abs(K) .< splow] = 0.0
+    K[abs(K) .< threshold] = 0.0
     Kˢ = sparse(K)
     conj!(Kˢ)
     Kˢ ./= fftlen
@@ -75,17 +128,17 @@ end
 # of a constant Q transform, J. Acoust. Soc. Amer., vol. 92, no. 5,
 # pp. 2698–2701, 1992.
 function cqt{T}(x::Vector{T},
-                fs=16000,
-                fdef::GeometricFrequency=GeometricFrequency(55, fs/2);
+                fs::Real,
+                freq::GeometricFrequency=GeometricFrequency(55, fs/2),
                 hopsize::Int=convert(Int, round(fs*0.005)),
                 win::Function=hamming,
-                K::SparseMatrixCSC = kernelmat(T, fdef, fs, win, 0.001)
-    )
-    Q = q(fdef)
-    f = freqs(fdef)
+                K::AbstractMatrix = _kernelmat(T, fs, freq, win, 0.005)
+                )
+    Q = q(freq)
+    f = freqs(freq)
 
     winsizes = int(fs ./ f * Q)
-    nframes = div(length(x), hopsize) - 1
+    nframes = div(length(x), hopsize)
 
     fftlen = nextpow2(winsizes[1])
     size(K) == (fftlen, length(winsizes)) || error("inconsistent kernel size")
@@ -107,7 +160,7 @@ function cqt{T}(x::Vector{T},
     freqbins = Array(Complex{T}, length(f))
 
     for n = 1:nframes
-        s = hopsize * n + 1
+        s = hopsize * (n - 1) + 1
         # copy to input buffer
         copy!(fftin, 1, xpadd, s, fftlen)
         # FFT
@@ -122,16 +175,27 @@ function cqt{T}(x::Vector{T},
     X
 end
 
+# CQT with a user-specified kernel matrix
+function cqt(x::Vector,
+             fs::Real,
+             K::SpectralKernelMatrix;
+             hopsize::Int = convert(Int, fs * 0.005)
+             )
+    prop = property(K)
+    fs == prop.fs || error("Inconsistent kerel")
+    cqt(x, prop.fs, prop.freq, hopsize, prop.win, K.data)
+end
+
 # J. Brown. Calculation of a constant Q spectral transform.
 # Journal of the Acoustical Society of America,, 89(1):
 # 425–434, 1991.
 function cqt_naive{T}(x::Vector{T},
                       fs=16000,
-                      fdef::GeometricFrequency=GeometricFrequency(55, fs/2);
+                      freq::GeometricFrequency=GeometricFrequency(55, fs/2),
                       hopsize::Int=convert(Int, round(fs*0.005)),
                       win::Function=hamming)
-    Q = q(fdef)
-    f = freqs(fdef)
+    Q = q(freq)
+    f = freqs(freq)
 
     winsizes = int(fs ./ f * Q)
     nframes = div(length(x), hopsize) - 1

@@ -185,38 +185,3 @@ function cqt(x::Vector,
     fs == prop.fs || error("Inconsistent kerel")
     cqt(x, prop.fs, prop.freq, hopsize, prop.win, K.data)
 end
-
-# J. Brown. Calculation of a constant Q spectral transform.
-# Journal of the Acoustical Society of America,, 89(1):
-# 425–434, 1991.
-function cqt_naive{T}(x::Vector{T},
-                      fs=16000,
-                      freq::GeometricFrequency=GeometricFrequency(55, fs/2),
-                      hopsize::Int=convert(Int, round(fs*0.005)),
-                      win::Function=hamming)
-    Q = q(freq)
-    f = freqs(freq)
-
-    winsizes = int(fs ./ f * Q)
-    nframes = div(length(x), hopsize) - 1
-
-    X = Array(Complex{T}, length(f), nframes)
-
-    for k = 1:length(winsizes)
-        Nk = winsizes[k]
-        Nh = Nk >> 1
-        kernel = win(Nk) .* exp(-im*2π*Q/Nk .* (1:Nk)) / Nk
-        s = zeros(Nk)
-
-        for n = 1:nframes
-            center = hopsize * (n - 1) + 1
-            left = max(1, center - Nh)
-            copy!(s, 1, x, left, center - left)
-            right = min(length(x), center + Nh)
-            copy!(s, Nh, x, center, right - center)
-            X[k,n] = dot(s, kernel)
-        end
-    end
-
-    X
-end

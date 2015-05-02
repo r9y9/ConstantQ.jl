@@ -66,7 +66,6 @@ let
     kp = KernelProperty(fs, freq, hamming)
 
     S = spzeros(Complex{Float64}, 5, 5)
-    @show typeof(S), typeof(kp)
     K = SpectralKernelMatrix(S, kp)
     @test property(K) == kp
     @test rawdata(K) == S
@@ -133,15 +132,5 @@ let
 
     K = kernelmat(Float64, fs)
     X = cqt(x, fs, K)
-    @test isa(X, Matrix{Complex{Float64}})
-end
-
-# cqt_naive
-let
-    srand(98765)
-    x = rand(Float64, 60700)
-    fs = 16000
-    freq = GeometricFrequency(174.5, fs/2)
-    X = ConstantQ.cqt_naive(x, fs, freq, 80)
     @test isa(X, Matrix{Complex{Float64}})
 end

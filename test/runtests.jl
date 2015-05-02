@@ -1,8 +1,17 @@
 using ConstantQ
 using Base.Test
 
-import ConstantQ: rawdata, _kernelmat
+import ConstantQ: rawdata, _kernelmat, Frequency
 import DSP: hamming
+
+immutable DummyFrequency <: Frequency
+end
+
+let
+    freq = DummyFrequency()
+    @test_throws Exception nfreqs(freq)
+    @test_throws Exception freqs(freq)
+end
 
 let
     GeometricFrequency(60, 61)
@@ -103,6 +112,17 @@ let
     K = kernelmat(Float64, fs)
     @test isa(K, SpectralKernelMatrix)
     @test issparse(K)
+
+    rawK = ConstantQ.rawdata(K)
+    @test size(K) == size(rawK)
+    @test length(K) == length(rawK)
+
+    # getindex
+    for i=1:10
+       @test rawK[i] == K[i]
+    end
+
+    @test isa(full(K), DenseMatrix)
 end
 
 # cqt
@@ -111,7 +131,7 @@ let
     srand(98765)
     x = rand(Float64, 60700)
     fs = 16000
-    hopsize = int(fs * 0.001)
+    hopsize = convert(Int, round(Int, fs * 0.001))
     freq = GeometricFrequency(174.5, fs/2)
 
     K = _kernelmat(Float64, fs, freq, hamming, 0.005)

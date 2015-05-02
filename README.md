@@ -18,7 +18,7 @@ where `x` is a input monoral signal and fs is its sampling frequency.
 ## Low-level interface
 
 ```julia
-# Define geometrically-spaced frequency range to analyeze
+# Define geometrically-spaced frequency range to analyze
 freq = GeometricFrequency(min=55, max=fs/2, bins=24)
 
 # Create spectral kernel matrix

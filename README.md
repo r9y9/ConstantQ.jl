@@ -1,6 +1,7 @@
 # ConstantQ
 
 [![Build Status](https://travis-ci.org/r9y9/ConstantQ.jl.svg?branch=master)](https://travis-ci.org/r9y9/ConstantQ.jl)
+[![Build status](https://ci.appveyor.com/api/projects/status/khkfvc1w5nlgkd0r/branch/master?svg=true)](https://ci.appveyor.com/project/r9y9/constantq-jl/branch/master)
 [![Coverage Status](https://coveralls.io/repos/r9y9/ConstantQ.jl/badge.svg?branch=master)](https://coveralls.io/r/r9y9/ConstantQ.jl?branch=master)
 
 A fast constant-q transform in Julia

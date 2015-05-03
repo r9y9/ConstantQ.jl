@@ -2,7 +2,7 @@ using ConstantQ
 using Base.Test
 
 import ConstantQ: rawdata, _speckernel, _tempkernel, Frequency
-import DSP: hamming
+import DSP: hamming, hanning
 
 immutable DummyFrequency <: Frequency
 end
@@ -69,6 +69,7 @@ let
     @test_throws Exception KernelProperty(fs, freq, invalid_win)
 end
 
+# SpectralKernelMatrix
 let
     fs = 16000
     freq = GeometricFrequency(min=60, max=5000)
@@ -88,6 +89,7 @@ let
     @test !issparse(K)
 end
 
+# TemporalKernelMatrix
 let
     fs = 16000
     freq = GeometricFrequency(min=60, max=5000)
@@ -144,6 +146,19 @@ let
     @test isa(full(K), DenseMatrix)
 end
 
+# _tempkernel
+let
+    fs = 16000
+    freq = GeometricFrequency(174.5, fs/2)
+    K = _tempkernel(Float64, fs, freq, hamming)
+    @test !issparse(K)
+    @test eltype(K) == Complex{Float64}
+
+    K = _tempkernel(Float32, fs, freq, hamming)
+    @test !issparse(K)
+    @test eltype(K) == Complex{Float32}
+end
+
 # tempkernel
 let
     fs = 16000
@@ -155,38 +170,51 @@ let
     fftlen = size(K, 1)
 
     # back to tempkernel
-    k = ifft(full(conj(K .* fftlen)), 1)
+    k = conj(ifft(full(conj(K .* fftlen)), 1))
 
     # check correctness
     expected = rawdata(tempkernel(Float64, fs, freq, hamming))
     @test_approx_eq k expected
 end
 
-# cqt
-# TODO(ryuichi) add tests that checks cqt work correctly
-let
-    srand(98765)
-    x = rand(Float64, 60700)
-    fs = 16000
-    hopsize = convert(Int, round(Int, fs * 0.001))
-    freq = GeometricFrequency(174.5, fs/2)
-
-    K = _speckernel(Float64, fs, freq, hamming, 0.005)
-    X, timeaxis, freqaxis = cqt(x, fs, freq, hopsize, hamming, K)
-    @test isa(X, Matrix{Complex{Float64}})
-end
-
-# user-friendly interface
+# cqt user-friendly interface
 let
     srand(98765)
     x = rand(Float64, 60700)
     fs = 16000
 
-    K = speckernel(Float64, fs, GeometricFrequency(min=60, max=5000))
+    freq = GeometricFrequency(min=60, max=5000)
+    K = speckernel(Float64, fs, freq)
     X, timeaxis, freqaxis = cqt(x, fs, K)
+    @test isa(X, Matrix{Complex{Float64}})
 
     @test first(timeaxis) == 0.0
     @test last(timeaxis) <= length(x)/fs
     @test first(freqaxis) == 60
     @test last(freqaxis) <= 5000
+end
+
+# check correctness
+let
+    srand(98765)
+    x = rand(Float64, 60700)
+    fs = 16000
+    hopsize = convert(Int, round(Int, fs * 0.01))
+    freq = GeometricFrequency(min=220, max=fs/2)
+
+    # CQT in frequency-domain
+    # make sure threshold to be zero
+    K = speckernel(Float64, fs, freq, hamming, 0.0)
+    @test isa(K, SpectralKernelMatrix)
+    X1, t1, f1 = cqt(x, fs, K, hopsize=hopsize)
+
+    # CQT in time-domain
+    k = tempkernel(Float64, fs, freq, hamming)
+    @test isa(k, TemporalKernelMatrix)
+    X2, t2, f2 = cqt(x, fs, k, hopsize=hopsize)
+
+    @test_approx_eq_eps norm(X1) norm(X2) 1.0e-7
+    @test_approx_eq_eps X1 X2 1.0e-7
+    @test_approx_eq t1 t2
+    @test_approx_eq f1 f2
 end

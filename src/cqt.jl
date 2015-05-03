@@ -133,6 +133,8 @@ function _speckernel(T::Type,
                     win::Function,
                     threshold::Float64)
     K = _tempkernel(T, fs, freq, win)
+    conj!(K)
+
     fftlen = size(K, 1)
 
     # to frequency domain
@@ -203,7 +205,7 @@ function cqt{T}(x::Vector{T},
         sym!(symfftout, fftout)
         # multiply in frequency-domain
         At_mul_B!(freqbins, K, symfftout)
-        # copy to result buffer
+        # copy to output buffer
         copy!(X, length(freqaxis)*(n-1) + 1, freqbins, 1, length(freqaxis))
     end
 
@@ -211,13 +213,68 @@ function cqt{T}(x::Vector{T},
     X, timeaxis, freqaxis
 end
 
-# CQT with a user-specified kernel matrix
+# CQT with frequency-domain kernel matrix
 function cqt(x::Vector,
              fs::Real,
              K::SpectralKernelMatrix;
-             hopsize::Int = convert(Int, fs * 0.005)
+             hopsize::Int = convert(Int, round(fs * 0.005))
              )
     prop = property(K)
     fs == prop.fs || error("Inconsistent kernel")
     cqt(x, prop.fs, prop.freq, hopsize, prop.win, K.data)
+end
+
+# J. C. Brown. "Calculation of a constant Q spectral transform,"
+# Journal of the Acoustical Society of America,, 89(1):
+# 425–434, 1991.
+function time_domain_cqt{T}(x::Vector{T},
+                            fs::Real,
+                            freq::GeometricFrequency=GeometricFrequency(55, fs/2),
+                            hopsize::Int=convert(Int, round(fs*0.005)),
+                            win::Function=hamming,
+                            K::AbstractMatrix = _tempkernel(T, fs, freq, win)
+                            )
+    Q = q(freq)
+    freqaxis = freqs(freq)
+
+    winsizes = int(fs ./ freqaxis * Q)
+    nframes = div(length(x), hopsize)
+
+    fftlen = nextpow2(winsizes[1])
+    size(K) == (fftlen, length(winsizes)) || error("inconsistent kernel size")
+
+    # Create padded signal
+    xpadd = Array(T, length(x) + fftlen)
+    copy!(xpadd, fftlen>>1+1, x, 1, length(x))
+
+    # Constant-q spectrogram
+    X = Array(Complex{T}, length(freqaxis), nframes)
+
+    # buffer used in roop
+    block = Array(T, fftlen)
+    freqbins = Array(Complex{T}, size(X, 1))
+
+    for n = 1:nframes
+        s = hopsize * (n - 1) + 1
+        # copy to input buffer
+        copy!(block, 1, xpadd, s, fftlen)
+        # multiply in time-domain
+        At_mul_B!(freqbins, K, block)
+        # copy to output buffer
+        copy!(X, length(freqaxis)*(n-1) + 1, freqbins, 1, length(freqaxis))
+    end
+
+    timeaxis = [0:hopsize:nframes;]/fs
+    X, timeaxis, freqaxis
+end
+
+# CQT with a time-domain kernel matrix
+function cqt(x::Vector,
+             fs::Real,
+             K::TemporalKernelMatrix;
+             hopsize::Int = convert(Int, round(fs * 0.005))
+             )
+    prop = property(K)
+    fs == prop.fs || error("Inconsistent kernel")
+    time_domain_cqt(x, fs, prop.freq, hopsize, prop.win, rawdata(K))
 end

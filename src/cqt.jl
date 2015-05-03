@@ -168,8 +168,9 @@ function cqt{T}(x::Vector{T},
         FFTW.execute(fplan.plan, fftin, fftout)
         # get full fft bins (rest half are complex conjugate)
         sym!(symfftout, fftout)
-        # mutiply in frequency-domain
+        # multiply in frequency-domain
         At_mul_B!(freqbins, K, symfftout)
+        # copy to result buffer
         copy!(X, length(freqaxis)*(n-1) + 1, freqbins, 1, length(freqaxis))
     end
 
@@ -184,6 +185,6 @@ function cqt(x::Vector,
              hopsize::Int = convert(Int, fs * 0.005)
              )
     prop = property(K)
-    fs == prop.fs || error("Inconsistent kerel")
+    fs == prop.fs || error("Inconsistent kernel")
     cqt(x, prop.fs, prop.freq, hopsize, prop.win, K.data)
 end

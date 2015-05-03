@@ -180,7 +180,7 @@ function cqt{T}(x::Vector{T},
     size(K) == (fftlen, length(winsizes)) || error("inconsistent kernel size")
 
     # Create padded signal
-    xpadd = Array(T, length(x) + fftlen)
+    xpadd = zeros(T, length(x) + fftlen)
     copy!(xpadd, fftlen>>1+1, x, 1, length(x))
 
     # FFT workspace
@@ -244,7 +244,7 @@ function time_domain_cqt{T}(x::Vector{T},
     size(K) == (fftlen, length(winsizes)) || error("inconsistent kernel size")
 
     # Create padded signal
-    xpadd = Array(T, length(x) + fftlen)
+    xpadd = zeros(T, length(x) + fftlen)
     copy!(xpadd, fftlen>>1+1, x, 1, length(x))
 
     # Constant-q spectrogram

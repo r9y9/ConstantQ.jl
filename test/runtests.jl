@@ -199,7 +199,7 @@ let
     srand(98765)
     x = rand(Float64, 60700)
     fs = 16000
-    hopsize = convert(Int, round(Int, fs * 0.01))
+    hopsize = convert(Int, round(fs * 0.01))
     freq = GeometricFrequency(min=220, max=fs/2)
 
     # CQT in frequency-domain

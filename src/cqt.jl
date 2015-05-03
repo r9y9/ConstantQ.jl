@@ -51,68 +51,101 @@ immutable KernelProperty
     end
 end
 
+# Kernel matrices
+abstract KernelMatrix{T} <: AbstractMatrix{T}
+
 # Spectral kernel (freqency-domain kernel)
-immutable SpectralKernelMatrix{T<:Complex} <: AbstractMatrix{T}
+immutable SpectralKernelMatrix{T<:Complex} <: KernelMatrix{T}
     data::AbstractMatrix{T}
     property::KernelProperty
 end
 
-property(kernel::SpectralKernelMatrix) = kernel.property
-rawdata(kernel::SpectralKernelMatrix) = kernel.data
+# Temporal kernel
+immutable TemporalKernelMatrix{T<:Complex} <: KernelMatrix{T}
+    data::AbstractMatrix{T}
+    property::KernelProperty
+end
 
-size(k::SpectralKernelMatrix) = size(k.data)
-length(k::SpectralKernelMatrix) = length(k.data)
+property(k::KernelMatrix) = k.property
+rawdata(k::KernelMatrix) = k.data
 
-getindex(k::SpectralKernelMatrix, i::Real) = getindex(k.data, i)
-getindex(k::SpectralKernelMatrix, i::Real...) = getindex(k.data, i...)
-getindex(k::SpectralKernelMatrix, i::Real, j::Real) = getindex(k.data, i, j)
-getindex(k::SpectralKernelMatrix, i::Range, j::Real) = getindex(k.data, i, j)
-getindex(k::SpectralKernelMatrix, i::Real, j::Range) = getindex(k.data, i, j)
+size(k::KernelMatrix) = size(k.data)
+length(k::KernelMatrix) = length(k.data)
 
-issparse(k::SpectralKernelMatrix) = issparse(k.data)
-full(k::SpectralKernelMatrix) = full(k.data)
+getindex(k::KernelMatrix, i::Real) = getindex(k.data, i)
+getindex(k::KernelMatrix, i::Real...) = getindex(k.data, i...)
+getindex(k::KernelMatrix, i::Real, j::Real) = getindex(k.data, i, j)
+getindex(k::KernelMatrix, i::Range, j::Real) = getindex(k.data, i, j)
+getindex(k::KernelMatrix, i::Real, j::Range) = getindex(k.data, i, j)
 
-function kernelmat(T::Type,
+issparse(k::KernelMatrix) = issparse(k.data)
+full(k::KernelMatrix) = full(k.data)
+
+function tempkernel(T::Type,
                    fs::Real,
                    freq::GeometricFrequency=GeometricFrequency(55, fs/2),
-                   win::Function=hamming,
-                   threshold::Float64=0.005)
+                   win::Function=hamming)
     prop = KernelProperty(fs, freq, win)
-    data = _kernelmat(T, prop, threshold)
-    SpectralKernelMatrix(data, prop)
+    data = _tempkernel(T, prop)
+    TemporalKernelMatrix(data, prop)
 end
 
-function _kernelmat(T::Type, prop::KernelProperty, threshold::Float64=0.005)
-    _kernelmat(T, prop.fs, prop.freq, prop.win, threshold)
+function _tempkernel(T::Type, prop::KernelProperty)
+    _tempkernel(T, prop.fs, prop.freq, prop.win)
 end
 
-# Compute sparse kernel matrix in frequency-domain
-function _kernelmat(T::Type,
-                    fs::Real,
-                    freq::GeometricFrequency,
-                    win::Function,
-                    threshold::Float64)
+function _tempkernel(T::Type, fs::Real, freq::GeometricFrequency, win::Function)
     Q = q(freq)
     f = freqs(freq)
     winsizes = int(fs ./ f * Q)
     fftlen = nextpow2(winsizes[1])
 
     K = zeros(Complex{T}, fftlen, length(winsizes))
-    atom = Array(Complex{T}, fftlen)
 
     for k = 1:length(winsizes)
-        fill!(atom, zero(Complex{T}))
         Nk = winsizes[k]
         kernel = win(Nk) .* exp(-im*2π*Q/Nk .* (1:Nk)) / Nk
-        s = (fftlen - Nk) >> 1 + 1
-        copy!(atom, s, kernel, 1, Nk)
-        fft!(atom)
-        copy!(K, fftlen*(k-1) + 1, atom, 1, fftlen)
+        s = (fftlen - Nk) >> 1
+        copy!(K, fftlen*(k-1) + s, kernel, 1, Nk)
     end
 
+    K
+end
+
+function speckernel(T::Type,
+                   fs::Real,
+                   freq::GeometricFrequency=GeometricFrequency(55, fs/2),
+                   win::Function=hamming,
+                   threshold::Float64=0.005)
+    prop = KernelProperty(fs, freq, win)
+    data = _speckernel(T, prop, threshold)
+    SpectralKernelMatrix(data, prop)
+end
+
+function _speckernel(T::Type, prop::KernelProperty, threshold::Float64=0.005)
+    _speckernel(T, prop.fs, prop.freq, prop.win, threshold)
+end
+
+# Compute sparse kernel matrix in frequency-domain
+function _speckernel(T::Type,
+                    fs::Real,
+                    freq::GeometricFrequency,
+                    win::Function,
+                    threshold::Float64)
+    K = _tempkernel(T, fs, freq, win)
+    fftlen = size(K, 1)
+
+    # to frequency domain
+    fft!(K, 1)
+
+    # make it sparse
     K[abs(K) .< threshold] = 0.0
     Kˢ = sparse(K)
+
+    # take complex conjugate
     conj!(Kˢ)
+
+    # normalize by fftlen
     Kˢ ./= fftlen
 
     Kˢ
@@ -133,7 +166,7 @@ function cqt{T}(x::Vector{T},
                 freq::GeometricFrequency=GeometricFrequency(55, fs/2),
                 hopsize::Int=convert(Int, round(fs*0.005)),
                 win::Function=hamming,
-                K::AbstractMatrix = _kernelmat(T, fs, freq, win, 0.005)
+                K::AbstractMatrix = _speckernel(T, fs, freq, win, 0.005)
                 )
     Q = q(freq)
     freqaxis = freqs(freq)

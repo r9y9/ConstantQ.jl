@@ -1,7 +1,7 @@
 using ConstantQ
 using Base.Test
 
-import ConstantQ: rawdata, _kernelmat, Frequency
+import ConstantQ: rawdata, _speckernel, _tempkernel, Frequency
 import DSP: hamming
 
 immutable DummyFrequency <: Frequency
@@ -88,28 +88,47 @@ let
     @test !issparse(K)
 end
 
-# _kernelmat
+let
+    fs = 16000
+    freq = GeometricFrequency(min=60, max=5000)
+    kp = KernelProperty(fs, freq, hamming)
+
+    S = spzeros(Complex{Float64}, 5, 5)
+    K = TemporalKernelMatrix(S, kp)
+    @test property(K) == kp
+    @test rawdata(K) == S
+    @test issparse(rawdata(K))
+    @test issparse(K)
+
+    S = zeros(Complex{Float64}, 5, 5)
+    K = TemporalKernelMatrix(S, kp)
+    @test rawdata(K) == S
+    @test !issparse(rawdata(K))
+    @test !issparse(K)
+end
+
+# _speckernel
 let
     fs = 16000
     freq = GeometricFrequency(174.5, fs/2)
-    K = _kernelmat(Float64, fs, freq, hamming, 0.005)
+    K = _speckernel(Float64, fs, freq, hamming, 0.005)
     @test issparse(K)
     @test eltype(K) == Complex{Float64}
 
-    K = _kernelmat(Float32, fs, freq, hamming, 0.005)
+    K = _speckernel(Float32, fs, freq, hamming, 0.005)
     @test issparse(K)
     @test eltype(K) == Complex{Float32}
 end
 
-# kernelmat
+# speckernel
 let
     fs = 16000
     freq = GeometricFrequency(174.5, fs/2)
-    K = kernelmat(Float64, fs, freq, hamming, 0.005)
+    K = speckernel(Float64, fs, freq, hamming, 0.005)
     @test isa(K, SpectralKernelMatrix)
     @test issparse(K)
 
-    K = kernelmat(Float64, fs)
+    K = speckernel(Float64, fs)
     @test isa(K, SpectralKernelMatrix)
     @test issparse(K)
 
@@ -125,6 +144,24 @@ let
     @test isa(full(K), DenseMatrix)
 end
 
+# tempkernel
+let
+    fs = 16000
+    freq = GeometricFrequency(min=220, max=440)
+
+    # compute speckernel
+    K = speckernel(Float64, fs, freq, hamming, 0.0)
+    K = rawdata(K)
+    fftlen = size(K, 1)
+
+    # back to tempkernel
+    k = ifft(full(conj(K .* fftlen)), 1)
+
+    # check correctness
+    expected = rawdata(tempkernel(Float64, fs, freq, hamming))
+    @test_approx_eq k expected
+end
+
 # cqt
 # TODO(ryuichi) add tests that checks cqt work correctly
 let
@@ -134,7 +171,7 @@ let
     hopsize = convert(Int, round(Int, fs * 0.001))
     freq = GeometricFrequency(174.5, fs/2)
 
-    K = _kernelmat(Float64, fs, freq, hamming, 0.005)
+    K = _speckernel(Float64, fs, freq, hamming, 0.005)
     X, timeaxis, freqaxis = cqt(x, fs, freq, hopsize, hamming, K)
     @test isa(X, Matrix{Complex{Float64}})
 end
@@ -145,7 +182,7 @@ let
     x = rand(Float64, 60700)
     fs = 16000
 
-    K = kernelmat(Float64, fs, GeometricFrequency(min=60, max=5000))
+    K = speckernel(Float64, fs, GeometricFrequency(min=60, max=5000))
     X, timeaxis, freqaxis = cqt(x, fs, K)
 
     @test first(timeaxis) == 0.0

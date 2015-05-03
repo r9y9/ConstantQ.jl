@@ -22,7 +22,7 @@ where `x` is a input monoral signal and fs is its sampling frequency.
 freq = GeometricFrequency(min=55, max=fs/2, bins=24)
 
 # Create spectral kernel matrix
-K = kernelmat(Float64, fs, freq)
+K = speckernel(Float64, fs, freq)
 
 # Compute constant-q spectrogram
 hopsize = convert(Int, fs * 0.005) # 5ms hopsize

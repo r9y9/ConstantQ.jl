@@ -26,7 +26,7 @@ freq = GeometricFrequency(min=55, max=fs/2, bins=24)
 K = speckernel(Float64, fs, freq)
 
 # Compute constant-q spectrogram
-hopsize = convert(Int, fs * 0.005) # 5ms hopsize
+hopsize = convert(Int, round(fs * 0.005)) # 5ms hopsize
 X, timeaxis, freqaxis = cqt(x, fs, K, hopsize=hopsize)
 ```
 

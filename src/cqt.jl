@@ -113,25 +113,25 @@ function _tempkernel(T::Type, fs::Real, freq::GeometricFrequency, win::Function)
 end
 
 function speckernel(T::Type,
-                   fs::Real,
-                   freq::GeometricFrequency=GeometricFrequency(55, fs/2),
-                   win::Function=hamming,
-                   threshold::Float64=0.005)
+                    fs::Real,
+                    freq::GeometricFrequency=GeometricFrequency(55, fs/2),
+                    win::Function=hamming,
+                    threshold=0.005)
     prop = KernelProperty(fs, freq, win)
     data = _speckernel(T, prop, threshold)
     SpectralKernelMatrix(data, prop)
 end
 
-function _speckernel(T::Type, prop::KernelProperty, threshold::Float64=0.005)
+function _speckernel(T::Type, prop::KernelProperty, threshold=0.005)
     _speckernel(T, prop.fs, prop.freq, prop.win, threshold)
 end
 
 # Compute sparse kernel matrix in frequency-domain
 function _speckernel(T::Type,
-                    fs::Real,
-                    freq::GeometricFrequency,
-                    win::Function,
-                    threshold::Float64)
+                     fs::Real,
+                     freq::GeometricFrequency,
+                     win::Function,
+                     threshold)
     K = _tempkernel(T, fs, freq, win)
     conj!(K)
 

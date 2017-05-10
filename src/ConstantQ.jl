@@ -1,4 +1,7 @@
+__precompile__()
 module ConstantQ
+
+using Compat
 
 export
     GeometricFrequency,   # geometrically spaced frequency

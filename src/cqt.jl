@@ -2,7 +2,7 @@ using DSP
 
 import Base: getindex, size, length, full, issparse
 
-abstract Frequency
+@compat abstract type Frequency end
 
 nfreqs(f::Frequency) = error("Not implemented")
 freqs(f::Frequency) = error("Not implemented")
@@ -52,7 +52,7 @@ immutable KernelProperty
 end
 
 # Kernel matrices
-abstract KernelMatrix{T} <: AbstractMatrix{T}
+@compat abstract type KernelMatrix{T} <: AbstractMatrix{T} end
 
 # Spectral kernel (freqency-domain kernel)
 immutable SpectralKernelMatrix{T<:Complex} <: KernelMatrix{T}
@@ -97,14 +97,14 @@ end
 function _tempkernel(T::Type, fs::Real, freq::GeometricFrequency, win::Function)
     Q = q(freq)
     f = freqs(freq)
-    winsizes = int(fs ./ f * Q)
+    winsizes = map(Int, map(trunc, (fs ./ f * Q)))
     fftlen = nextpow2(winsizes[1])
 
     K = zeros(Complex{T}, fftlen, length(winsizes))
 
     for k = 1:length(winsizes)
         Nk = winsizes[k]
-        kernel = win(Nk) .* exp(-im*2π*Q/Nk .* (1:Nk)) / Nk
+        kernel = win(Nk) .* exp.(-im*2π*Q/Nk .* (1:Nk)) / Nk
         s = (fftlen - Nk) >> 1
         copy!(K, fftlen*(k-1) + s, kernel, 1, Nk)
     end
@@ -141,7 +141,7 @@ function _speckernel(T::Type,
     fft!(K, 1)
 
     # make it sparse
-    K[abs(K) .< threshold] = 0.0
+    K[abs.(K) .< threshold] = 0.0
     Kˢ = sparse(K)
 
     # take complex conjugate
@@ -173,7 +173,7 @@ function cqt{T}(x::Vector{T},
     Q = q(freq)
     freqaxis = freqs(freq)
 
-    winsizes = int(fs ./ freqaxis * Q)
+    winsizes = map(Int, map(trunc, (fs ./ freqaxis * Q)))
     nframes = div(length(x), hopsize)
 
     fftlen = nextpow2(winsizes[1])
@@ -184,23 +184,23 @@ function cqt{T}(x::Vector{T},
     copy!(xpadd, fftlen>>1+1, x, 1, length(x))
 
     # FFT workspace
-    fftin = Array(T, fftlen)
-    fftout = Array(Complex{T}, fftlen>>1+1)
-    fplan = FFTW.Plan(fftin, fftout, 1, FFTW.ESTIMATE, FFTW.NO_TIMELIMIT)
-    symfftout = Array(Complex{T}, fftlen)
+    fftin = Vector{T}(fftlen)
+    fftout = Vector{Complex{T}}(fftlen>>1+1)
+    fplan = plan_rfft(fftin)
+    symfftout = Vector{Complex{T}}(fftlen)
 
     # Constant-Q spectrogram
-    X = Array(Complex{T}, length(freqaxis), nframes)
+    X = Array{Complex{T},2}(length(freqaxis), nframes)
 
     # tmp used in loop
-    freqbins = Array(Complex{T}, length(freqaxis))
+    freqbins = Vector{Complex{T}}(length(freqaxis))
 
     for n = 1:nframes
         s = hopsize * (n - 1) + 1
         # copy to input buffer
         copy!(fftin, 1, xpadd, s, fftlen)
         # FFT
-        FFTW.execute(fplan.plan, fftin, fftout)
+        A_mul_B!(fftout, fplan, fftin)
         # get full fft bins (rest half are complex conjugate)
         sym!(symfftout, fftout)
         # multiply in frequency-domain
@@ -237,7 +237,7 @@ function time_domain_cqt{T}(x::Vector{T},
     Q = q(freq)
     freqaxis = freqs(freq)
 
-    winsizes = int(fs ./ freqaxis * Q)
+    winsizes = map(Int, map(trunc, (fs ./ freqaxis * Q)))
     nframes = div(length(x), hopsize)
 
     fftlen = nextpow2(winsizes[1])
@@ -248,11 +248,11 @@ function time_domain_cqt{T}(x::Vector{T},
     copy!(xpadd, fftlen>>1+1, x, 1, length(x))
 
     # Constant-q spectrogram
-    X = Array(Complex{T}, length(freqaxis), nframes)
+    X = Array{Complex{T},2}(length(freqaxis), nframes)
 
     # buffer used in roop
-    block = Array(T, fftlen)
-    freqbins = Array(Complex{T}, size(X, 1))
+    block = Vector{T}(fftlen)
+    freqbins = Vector{Complex{T}}(size(X, 1))
 
     for n = 1:nframes
         s = hopsize * (n - 1) + 1

@@ -39,7 +39,7 @@ end
 
 let
     freq = GeometricFrequency(min=60, max=5000, bins=24)
-    @test_approx_eq q(freq) 34.12708770892056
+    @test isapprox(q(freq), 34.12708770892056)
 end
 
 let
@@ -52,9 +52,9 @@ end
 # constant diff in log-frequency domain
 let
     f = freqs(GeometricFrequency(min=60, max=5000))
-    d = diff(log(f))
+    d = diff(log.(f))
     for e in d
-        @test_approx_eq d[1] e
+        @test isapprox(d[1], e)
     end
 end
 
@@ -174,7 +174,7 @@ let
 
     # check correctness
     expected = rawdata(tempkernel(Float64, fs, freq, hamming))
-    @test_approx_eq k expected
+    @test isapprox(k, expected)
 end
 
 # cqt user-friendly interface
@@ -213,8 +213,8 @@ let
     @test isa(k, TemporalKernelMatrix)
     X2, t2, f2 = cqt(x, fs, k, hopsize=hopsize)
 
-    @test_approx_eq_eps norm(X1) norm(X2) 1.0e-7
-    @test_approx_eq_eps X1 X2 1.0e-7
-    @test_approx_eq t1 t2
-    @test_approx_eq f1 f2
+    @test isapprox(norm(X1), norm(X2), atol=1.0e-7)
+    @test isapprox(X1, X2, atol=1.0e-7)
+    @test isapprox(t1, t2)
+    @test isapprox(f1, f2)
 end

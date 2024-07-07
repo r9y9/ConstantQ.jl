@@ -1,5 +1,8 @@
 # Created by http://www.gitignore.io
 
+### Julia ###
+Manifest.toml
+
 ### IPythonNotebook ###
 # Temporary data
 .ipynb_checkpoints/

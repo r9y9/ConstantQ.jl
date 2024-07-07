@@ -1,6 +1,8 @@
-using DSP
+using SparseArrays
+using DSP, FFTW
 
-import Base: getindex, size, length, full, issparse
+import Base: getindex, size, length
+import LinearAlgebra: mul!
 
 @compat abstract type Frequency end
 
@@ -9,7 +11,7 @@ freqs(f::Frequency) = error("Not implemented")
 
 # Geometrically spaced frequency
 # fₖ = min * 2^(1/bins)ᵏ
-immutable GeometricFrequency <: Frequency
+struct GeometricFrequency <: Frequency
     min::Real
     max::Real
     bins::Real # the number of bins per octave
@@ -28,11 +30,11 @@ end
 nbins_per_octave(freq::GeometricFrequency) = freq.bins
 
 # Q-factor
-q(bins, qrate=1.0) = 1.0 / (2 ^ (1.0/bins) - 1) * qrate
+q(bins, qrate=1.0) = 1.0 / (2^(1.0 / bins) - 1) * qrate
 q(f::GeometricFrequency, qrate=1.0) = q(f.bins, qrate)
 
 function nfreqs(f::GeometricFrequency)
-    convert(Int, round(nbins_per_octave(f)  * (log2(f.max / f.min))))
+    convert(Int, round(nbins_per_octave(f) * (log2(f.max / f.min))))
 end
 
 function freqs(f::GeometricFrequency)
@@ -40,7 +42,7 @@ function freqs(f::GeometricFrequency)
 end
 
 # Kernel property
-immutable KernelProperty
+struct KernelProperty
     fs::Real
     freq::GeometricFrequency
     win::Function
@@ -55,13 +57,13 @@ end
 @compat abstract type KernelMatrix{T} <: AbstractMatrix{T} end
 
 # Spectral kernel (freqency-domain kernel)
-immutable SpectralKernelMatrix{T<:Complex} <: KernelMatrix{T}
+struct SpectralKernelMatrix{T<:Complex} <: KernelMatrix{T}
     data::AbstractMatrix{T}
     property::KernelProperty
 end
 
 # Temporal kernel
-immutable TemporalKernelMatrix{T<:Complex} <: KernelMatrix{T}
+struct TemporalKernelMatrix{T<:Complex} <: KernelMatrix{T}
     data::AbstractMatrix{T}
     property::KernelProperty
 end
@@ -75,16 +77,18 @@ length(k::KernelMatrix) = length(k.data)
 getindex(k::KernelMatrix, i::Real) = getindex(k.data, i)
 getindex(k::KernelMatrix, i::Real...) = getindex(k.data, i...)
 getindex(k::KernelMatrix, i::Real, j::Real) = getindex(k.data, i, j)
-getindex(k::KernelMatrix, i::Range, j::Real) = getindex(k.data, i, j)
-getindex(k::KernelMatrix, i::Real, j::Range) = getindex(k.data, i, j)
+getindex(k::KernelMatrix, i::AbstractRange, j::Real) = getindex(k.data, i, j)
+getindex(k::KernelMatrix, i::Real, j::AbstractRange) = getindex(k.data, i, j)
 
-issparse(k::KernelMatrix) = issparse(k.data)
-full(k::KernelMatrix) = full(k.data)
+SparseArrays.issparse(k::KernelMatrix) = SparseArrays.issparse(k.data)
+#full(k::KernelMatrix) = full(k.data)
+
+nextpow2(n::Real) = (2^(ceil(Int64, log2(n))))
 
 function tempkernel(T::Type,
-                   fs::Real,
-                   freq::GeometricFrequency=GeometricFrequency(55, fs/2),
-                   win::Function=hamming)
+    fs::Real,
+    freq::GeometricFrequency=GeometricFrequency(55, fs / 2),
+    win::Function=hamming)
     prop = KernelProperty(fs, freq, win)
     data = _tempkernel(T, prop)
     TemporalKernelMatrix(data, prop)
@@ -104,19 +108,19 @@ function _tempkernel(T::Type, fs::Real, freq::GeometricFrequency, win::Function)
 
     for k = 1:length(winsizes)
         Nk = winsizes[k]
-        kernel = win(Nk) .* exp.(-im*2π*Q/Nk .* (1:Nk)) / Nk
+        kernel = win(Nk) .* exp.(-im * 2π * Q / Nk .* (1:Nk)) / Nk
         s = (fftlen - Nk) >> 1
-        copy!(K, fftlen*(k-1) + s, kernel, 1, Nk)
+        copyto!(K, fftlen * (k - 1) + s, kernel, 1, Nk)
     end
 
     K
 end
 
 function speckernel(T::Type,
-                    fs::Real,
-                    freq::GeometricFrequency=GeometricFrequency(55, fs/2),
-                    win::Function=hamming,
-                    threshold=0.005)
+    fs::Real,
+    freq::GeometricFrequency=GeometricFrequency(55, fs / 2),
+    win::Function=hamming,
+    threshold=0.005)
     prop = KernelProperty(fs, freq, win)
     data = _speckernel(T, prop, threshold)
     SpectralKernelMatrix(data, prop)
@@ -128,10 +132,10 @@ end
 
 # Compute sparse kernel matrix in frequency-domain
 function _speckernel(T::Type,
-                     fs::Real,
-                     freq::GeometricFrequency,
-                     win::Function,
-                     threshold)
+    fs::Real,
+    freq::GeometricFrequency,
+    win::Function,
+    threshold)
     K = _tempkernel(T, fs, freq, win)
     conj!(K)
 
@@ -141,7 +145,7 @@ function _speckernel(T::Type,
     fft!(K, 1)
 
     # make it sparse
-    K[abs.(K) .< threshold] = 0.0
+    K[abs.(K).<threshold] .= 0.0
     Kˢ = sparse(K)
 
     # take complex conjugate
@@ -154,7 +158,7 @@ function _speckernel(T::Type,
 end
 
 function sym!(symfftout, fftout)
-    copy!(symfftout, 1, fftout, 1, length(fftout))
+    copyto!(symfftout, 1, fftout, 1, length(fftout))
     @inbounds for i = 1:length(fftout)-1
         symfftout[end-i+1] = conj(fftout[i+1])
     end
@@ -163,13 +167,13 @@ end
 # J. C. Brown and M. S. Puckette, "An efficient algorithm for the calculation
 # of a constant Q transform," J. Acoust. Soc. Amer., vol. 92, no. 5,
 # pp. 2698–2701, 1992.
-function cqt{T}(x::Vector{T},
-                fs::Real,
-                freq::GeometricFrequency=GeometricFrequency(55, fs/2),
-                hopsize::Int=convert(Int, round(fs*0.005)),
-                win::Function=hamming,
-                K::AbstractMatrix = _speckernel(T, fs, freq, win, 0.005)
-                )
+function cqt(x::Vector{T},
+    fs::Real,
+    freq::GeometricFrequency=GeometricFrequency(55, fs / 2),
+    hopsize::Int=convert(Int, round(fs * 0.005)),
+    win::Function=hamming,
+    K::AbstractMatrix=_speckernel(T, fs, freq, win, 0.005)
+) where {T}
     Q = q(freq)
     freqaxis = freqs(freq)
 
@@ -181,44 +185,44 @@ function cqt{T}(x::Vector{T},
 
     # Create padded signal
     xpadd = zeros(T, length(x) + fftlen)
-    copy!(xpadd, fftlen>>1+1, x, 1, length(x))
+    copyto!(xpadd, fftlen >> 1 + 1, x, 1, length(x))
 
     # FFT workspace
-    fftin = Vector{T}(fftlen)
-    fftout = Vector{Complex{T}}(fftlen>>1+1)
+    fftin = Vector{T}(undef, fftlen)
+    fftout = Vector{Complex{T}}(undef, fftlen >> 1 + 1)
     fplan = plan_rfft(fftin)
-    symfftout = Vector{Complex{T}}(fftlen)
+    symfftout = Vector{Complex{T}}(undef, fftlen)
 
     # Constant-Q spectrogram
-    X = Array{Complex{T},2}(length(freqaxis), nframes)
+    X = Array{Complex{T},2}(undef, length(freqaxis), nframes)
 
     # tmp used in loop
-    freqbins = Vector{Complex{T}}(length(freqaxis))
+    freqbins = Vector{Complex{T}}(undef, length(freqaxis))
 
     for n = 1:nframes
         s = hopsize * (n - 1) + 1
         # copy to input buffer
-        copy!(fftin, 1, xpadd, s, fftlen)
+        copyto!(fftin, 1, xpadd, s, fftlen)
         # FFT
-        A_mul_B!(fftout, fplan, fftin)
+        mul!(fftout, fplan, fftin)
         # get full fft bins (rest half are complex conjugate)
         sym!(symfftout, fftout)
         # multiply in frequency-domain
-        At_mul_B!(freqbins, K, symfftout)
+        mul!(freqbins, transpose(K), symfftout)
         # copy to output buffer
-        copy!(X, length(freqaxis)*(n-1) + 1, freqbins, 1, length(freqaxis))
+        copyto!(X, length(freqaxis) * (n - 1) + 1, freqbins, 1, length(freqaxis))
     end
 
-    timeaxis = [0:hopsize:nframes;]/fs
+    timeaxis = [0:hopsize:nframes;] / fs
     X, timeaxis, freqaxis
 end
 
 # CQT with frequency-domain kernel matrix
 function cqt(x::Vector,
-             fs::Real,
-             K::SpectralKernelMatrix;
-             hopsize::Int = convert(Int, round(fs * 0.005))
-             )
+    fs::Real,
+    K::SpectralKernelMatrix;
+    hopsize::Int=convert(Int, round(fs * 0.005))
+)
     prop = property(K)
     fs == prop.fs || error("Inconsistent kernel")
     cqt(x, prop.fs, prop.freq, hopsize, prop.win, K.data)
@@ -227,13 +231,13 @@ end
 # J. C. Brown. "Calculation of a constant Q spectral transform,"
 # Journal of the Acoustical Society of America,, 89(1):
 # 425–434, 1991.
-function time_domain_cqt{T}(x::Vector{T},
-                            fs::Real,
-                            freq::GeometricFrequency=GeometricFrequency(55, fs/2),
-                            hopsize::Int=convert(Int, round(fs*0.005)),
-                            win::Function=hamming,
-                            K::AbstractMatrix = _tempkernel(T, fs, freq, win)
-                            )
+function time_domain_cqt(x::Vector{T},
+    fs::Real,
+    freq::GeometricFrequency=GeometricFrequency(55, fs / 2),
+    hopsize::Int=convert(Int, round(fs * 0.005)),
+    win::Function=hamming,
+    K::AbstractMatrix=_tempkernel(T, fs, freq, win) where {T}
+) where {T}
     Q = q(freq)
     freqaxis = freqs(freq)
 
@@ -245,35 +249,35 @@ function time_domain_cqt{T}(x::Vector{T},
 
     # Create padded signal
     xpadd = zeros(T, length(x) + fftlen)
-    copy!(xpadd, fftlen>>1+1, x, 1, length(x))
+    copyto!(xpadd, fftlen >> 1 + 1, x, 1, length(x))
 
     # Constant-q spectrogram
-    X = Array{Complex{T},2}(length(freqaxis), nframes)
+    X = Array{Complex{T},2}(undef, length(freqaxis), nframes)
 
     # buffer used in roop
-    block = Vector{T}(fftlen)
-    freqbins = Vector{Complex{T}}(size(X, 1))
+    block = Vector{T}(undef, fftlen)
+    freqbins = Vector{Complex{T}}(undef, size(X, 1))
 
     for n = 1:nframes
         s = hopsize * (n - 1) + 1
         # copy to input buffer
-        copy!(block, 1, xpadd, s, fftlen)
+        copyto!(block, 1, xpadd, s, fftlen)
         # multiply in time-domain
-        At_mul_B!(freqbins, K, block)
+        mul!(freqbins, transpose(K), block)
         # copy to output buffer
-        copy!(X, length(freqaxis)*(n-1) + 1, freqbins, 1, length(freqaxis))
+        copyto!(X, length(freqaxis) * (n - 1) + 1, freqbins, 1, length(freqaxis))
     end
 
-    timeaxis = [0:hopsize:nframes;]/fs
+    timeaxis = [0:hopsize:nframes;] / fs
     X, timeaxis, freqaxis
 end
 
 # CQT with a time-domain kernel matrix
 function cqt(x::Vector,
-             fs::Real,
-             K::TemporalKernelMatrix;
-             hopsize::Int = convert(Int, round(fs * 0.005))
-             )
+    fs::Real,
+    K::TemporalKernelMatrix;
+    hopsize::Int=convert(Int, round(fs * 0.005))
+)
     prop = property(K)
     fs == prop.fs || error("Inconsistent kernel")
     time_domain_cqt(x, fs, prop.freq, hopsize, prop.win, rawdata(K))

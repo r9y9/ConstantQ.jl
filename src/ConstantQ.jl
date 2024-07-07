@@ -3,6 +3,7 @@ module ConstantQ
 
 using Compat
 
+include("cqt.jl")
 export
     GeometricFrequency,   # geometrically spaced frequency
     KernelProperty,       # kernel property
@@ -17,6 +18,5 @@ export
     tempkernel,           # construct time-domain kernel
     cqt                   # A fast constant-Q transform
 
-include("cqt.jl")
 
 end # module

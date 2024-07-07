@@ -1,10 +1,14 @@
 using ConstantQ
-using Base.Test
+using Random
+using FFTW
+using SparseArrays
+using Test
 
 import ConstantQ: rawdata, _speckernel, _tempkernel, Frequency
 import DSP: hamming, hanning
+import LinearAlgebra: norm
 
-immutable DummyFrequency <: Frequency
+struct DummyFrequency <: Frequency
 end
 
 let
@@ -112,7 +116,7 @@ end
 # _speckernel
 let
     fs = 16000
-    freq = GeometricFrequency(174.5, fs/2)
+    freq = GeometricFrequency(174.5, fs / 2)
     K = _speckernel(Float64, fs, freq, hamming, 0.005)
     @test issparse(K)
     @test eltype(K) == Complex{Float64}
@@ -125,7 +129,7 @@ end
 # speckernel
 let
     fs = 16000
-    freq = GeometricFrequency(174.5, fs/2)
+    freq = GeometricFrequency(174.5, fs / 2)
     K = speckernel(Float64, fs, freq, hamming, 0.005)
     @test isa(K, SpectralKernelMatrix)
     @test issparse(K)
@@ -139,17 +143,17 @@ let
     @test length(K) == length(rawK)
 
     # getindex
-    for i=1:10
-       @test rawK[i] == K[i]
+    for i = 1:10
+        @test rawK[i] == K[i]
     end
 
-    @test isa(full(K), DenseMatrix)
+    @test isa(Matrix(K), DenseMatrix)
 end
 
 # _tempkernel
 let
     fs = 16000
-    freq = GeometricFrequency(174.5, fs/2)
+    freq = GeometricFrequency(174.5, fs / 2)
     K = _tempkernel(Float64, fs, freq, hamming)
     @test !issparse(K)
     @test eltype(K) == Complex{Float64}
@@ -170,7 +174,7 @@ let
     fftlen = size(K, 1)
 
     # back to tempkernel
-    k = conj(ifft(full(conj(K .* fftlen)), 1))
+    k = conj(ifft(Matrix(conj(K .* fftlen)), 1))
 
     # check correctness
     expected = rawdata(tempkernel(Float64, fs, freq, hamming))
@@ -179,7 +183,7 @@ end
 
 # cqt user-friendly interface
 let
-    srand(98765)
+    Random.seed!(98765)
     x = rand(Float64, 60700)
     fs = 16000
 
@@ -189,18 +193,18 @@ let
     @test isa(X, Matrix{Complex{Float64}})
 
     @test first(timeaxis) == 0.0
-    @test last(timeaxis) <= length(x)/fs
+    @test last(timeaxis) <= length(x) / fs
     @test first(freqaxis) == 60
     @test last(freqaxis) <= 5000
 end
 
 # check correctness
 let
-    srand(98765)
+    Random.seed!(98765)
     x = rand(Float64, 60700)
     fs = 16000
     hopsize = convert(Int, round(fs * 0.01))
-    freq = GeometricFrequency(min=220, max=fs/2)
+    freq = GeometricFrequency(min=220, max=fs / 2)
 
     # CQT in frequency-domain
     # make sure threshold to be zero

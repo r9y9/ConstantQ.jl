@@ -80,8 +80,8 @@ getindex(k::KernelMatrix, i::Real, j::Real) = getindex(k.data, i, j)
 getindex(k::KernelMatrix, i::AbstractRange, j::Real) = getindex(k.data, i, j)
 getindex(k::KernelMatrix, i::Real, j::AbstractRange) = getindex(k.data, i, j)
 
-issparse(k::KernelMatrix) = issparse(k.data)
-full(k::KernelMatrix) = full(k.data)
+SparseArrays.issparse(k::KernelMatrix) = SparseArrays.issparse(k.data)
+#full(k::KernelMatrix) = full(k.data)
 
 nextpow2(n::Real) = (2^(ceil(Int64, log2(n))))
 
@@ -231,13 +231,13 @@ end
 # J. C. Brown. "Calculation of a constant Q spectral transform,"
 # Journal of the Acoustical Society of America,, 89(1):
 # 425–434, 1991.
-function time_domain_cqt(x::Vector{T} where {T},
+function time_domain_cqt(x::Vector{T},
     fs::Real,
     freq::GeometricFrequency=GeometricFrequency(55, fs / 2),
     hopsize::Int=convert(Int, round(fs * 0.005)),
     win::Function=hamming,
     K::AbstractMatrix=_tempkernel(T, fs, freq, win) where {T}
-)
+) where {T}
     Q = q(freq)
     freqaxis = freqs(freq)
 
@@ -249,23 +249,23 @@ function time_domain_cqt(x::Vector{T} where {T},
 
     # Create padded signal
     xpadd = zeros(T, length(x) + fftlen)
-    copy!(xpadd, fftlen >> 1 + 1, x, 1, length(x))
+    copyto!(xpadd, fftlen >> 1 + 1, x, 1, length(x))
 
     # Constant-q spectrogram
-    X = Array{Complex{T},2}(length(freqaxis), nframes)
+    X = Array{Complex{T},2}(undef, length(freqaxis), nframes)
 
     # buffer used in roop
-    block = Vector{T}(fftlen)
-    freqbins = Vector{Complex{T}}(size(X, 1))
+    block = Vector{T}(undef, fftlen)
+    freqbins = Vector{Complex{T}}(undef, size(X, 1))
 
     for n = 1:nframes
         s = hopsize * (n - 1) + 1
         # copy to input buffer
-        copy!(block, 1, xpadd, s, fftlen)
+        copyto!(block, 1, xpadd, s, fftlen)
         # multiply in time-domain
-        At_mul_B!(freqbins, K, block)
+        mul!(freqbins, transpose(K), block)
         # copy to output buffer
-        copy!(X, length(freqaxis) * (n - 1) + 1, freqbins, 1, length(freqaxis))
+        copyto!(X, length(freqaxis) * (n - 1) + 1, freqbins, 1, length(freqaxis))
     end
 
     timeaxis = [0:hopsize:nframes;] / fs
